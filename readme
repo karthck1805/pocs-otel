@@ -1,0 +1,7 @@
+sudo touch install-java-corretto.sh install-otel-collector.sh  install-zipkin.sh
+
+sudo chmod 777 install-java-corretto.sh install-otel-collector.sh  install-zipkin.sh
+
+
+sudo systemctl status zipkin.service
+sudo systemctl status otelcol.service
