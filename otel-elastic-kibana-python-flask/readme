@@ -1,0 +1,100 @@
+On the ELK/OTEL server:
+
+# Hit your app a few times
+curl http://localhost:8000/
+curl http://localhost:8000/error
+curl http://localhost:8000/
+
+
+Now check the log file OTEL is tailing:
+
+tail -n 20 /var/log/myapp/app.log
+
+
+You should see lines like:
+
+2025-12-07 19:35:10,123 INFO [werkzeug] Index page hit
+2025-12-07 19:35:15,456 ERROR [werkzeug] Simulated error endpoint hit
+
+
+
+Verify data reached Elasticsearch (CLI)
+
+We configured OTEL to write to index otel-logs. So:
+
+2.1 See if otel-logs index exists and has data
+curl -s "http://localhost:9200/_cat/indices?v" | grep otel-logs
+
+
+You should see something like:
+
+yellow open otel-logs  <uuid> 1 1  50 0  some-size ...
+
+
+The docs.count column should be > 0.
+
+2.2 Look at latest documents from otel-logs
+curl -s -H "Content-Type: application/json" \
+  "http://localhost:9200/otel-logs/_search?pretty" \
+  -d '{
+    "size": 5,
+    "sort": [ { "@timestamp": "desc" } ]
+  }'
+
+
+Look inside the output for your messages:
+
+"Index page hit"
+
+"Simulated error endpoint hit"
+
+Some fields like message, log.level, service.*, etc.
+
+2.3 Filter by message text
+
+To search only for your Flask log text:
+
+curl -s -H "Content-Type: application/json" \
+  "http://localhost:9200/otel-logs/_search?pretty" \
+  -d '{
+    "query": {
+      "match": {
+        "message": "Index page hit"
+      }
+    },
+    "size": 10
+  }'
+
+
+  Open Kibana:
+http://<server-public-ip>:5601
+
+Go to Stack Management → Data Views (or Index Patterns):
+
+Create a Data View:
+
+Name: otel-logs
+
+Index pattern: otel-logs*
+
+Time field: @timestamp (or whichever time field shows up in the ES docs).
+
+Go to Discover:
+
+Select the otel-logs data view.
+
+Top-right time picker: set to Last 15 minutes.
+
+In the search bar try:
+
+message: "Index page hit"
+
+
+or
+
+message: "Simulated error endpoint hit"
+
+
+If you see the documents there, you now have full chain:
+
+Flask → /var/log/myapp/app.log → OTEL filelog receiver → OTEL Elasticsearch exporter → Elasticsearch (otel-logs index) → Kibana Discover.
